@@ -4,7 +4,7 @@
 
 FinCore is a planned research, valuation, and deal analytics platform for learning investment banking through a practical software project. The aim is to turn public-company disclosures into traceable financial statements, reproducible valuation models, scenario comparisons, and exportable analyst reports.
 
-This repository currently contains project documentation only. The application, integrations, calculations, and exports are not implemented yet.
+This repository contains project documentation and a Spring Boot API starter in `fincore-java-server`. The financial workflows, integrations, calculations, and exports are not implemented yet.
 
 ## Project idea
 
@@ -52,7 +52,34 @@ The project serves two goals:
 | Development and delivery | Docker Compose, GitHub Actions; AWS as a potential deployment target |
 | Later additions | Redis/workers when needed; LangGraph and pgvector for filing research |
 
-These are design proposals, not installed dependencies. There are no setup or run commands yet.
+The Java API starter uses Java 21, Maven, Spring Web, and Spring Boot Actuator. The remaining tools are design proposals.
+
+## Run the Java server
+
+Install JDK 21 and set `JAVA_HOME` to its installation directory, then run:
+
+```sh
+cd fincore-java-server
+./mvnw spring-boot:run
+```
+
+The server listens on `http://localhost:8080`. Check its health at `http://localhost:8080/actuator/health`.
+
+Run the tests and build an executable JAR with `./mvnw verify`. See the [server README](fincore-java-server/README.md) for more details.
+
+## Local Git checks
+
+Enable the shared Git hooks once after cloning, from the repository root:
+
+```sh
+sh scripts/install-git-hooks.sh
+```
+
+With JDK 21 and `JAVA_HOME` configured, commits check staged whitespace across the repository and run Java formatting and Checkstyle checks. Pushes run a clean Java build with all tests for each distinct commit tip being pushed. Newly added Java sources and tests are included automatically. Hooks check isolated snapshots without changing your files or staging area.
+
+Hook activation is local to each clone. GitHub Actions also runs the Java checks after pushing. When another application or language is added, extend `scripts/run-git-checks.sh` and CI with its checks.
+
+Run the hook regression tests with `python3 -m unittest discover -s tests -v`. They use temporary repositories to cover partial staging, check failures, whitespace, multiple pushed refs, and deletions.
 
 ## Roadmap
 
@@ -68,8 +95,12 @@ These are design proposals, not installed dependencies. There are no setup or ru
 ```text
 fine-core/
 ├── Readme.md
-└── docs/
-    └── idea.md
+├── docs/
+│   └── idea.md
+└── fincore-java-server/
+    ├── pom.xml
+    ├── mvnw
+    └── src/
 ```
 
 ## Modeling principles
