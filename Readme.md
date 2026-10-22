@@ -4,7 +4,7 @@
 
 FinCore is a planned research, valuation, and deal analytics platform for learning investment banking through a practical software project. The aim is to turn public-company disclosures into traceable financial statements, reproducible valuation models, scenario comparisons, and exportable analyst reports.
 
-This repository contains project documentation and a Spring Boot API starter in `fincore-java-server`. The financial workflows, integrations, calculations, and exports are not implemented yet.
+This repository contains project documentation, a Spring Boot API starter in `fincore-java-server`, and a Python/FastAPI service starter in `finecore-ai-server`. The financial workflows, integrations, calculations, and exports are not implemented yet.
 
 ## Project idea
 
@@ -52,7 +52,7 @@ The project serves two goals:
 | Development and delivery | Docker Compose, GitHub Actions; AWS as a potential deployment target |
 | Later additions | Redis/workers when needed; LangGraph and pgvector for filing research |
 
-The Java API starter uses Java 21, Maven, Spring Web, and Spring Boot Actuator. The remaining tools are design proposals.
+The Java API starter uses Java 21, Maven, Spring Web, and Spring Boot Actuator. The Python starter uses Python 3.12, FastAPI, Pydantic Settings, and uv. The remaining tools are design proposals.
 
 ## Run the Java server
 
@@ -67,6 +67,18 @@ The server listens on `http://localhost:8080`. Check its health at `http://local
 
 Run the tests and build an executable JAR with `./mvnw verify`. See the [server README](fincore-java-server/README.md) for more details.
 
+## Run the Python service
+
+Install Python 3.12 and uv, then run:
+
+```sh
+cd finecore-ai-server
+uv sync --frozen
+uv run uvicorn finecore_ai_server.main:app --reload --port 8000
+```
+
+Health is available at `http://localhost:8000/health` and API documentation at `http://localhost:8000/docs`. See the [Python service README](finecore-ai-server/README.md) for configuration and development checks.
+
 ## Local Git checks
 
 Enable the shared Git hooks once after cloning, from the repository root:
@@ -77,7 +89,7 @@ sh scripts/install-git-hooks.sh
 
 With JDK 21 and `JAVA_HOME` configured, commits check staged whitespace across the repository and run Java formatting and Checkstyle checks. Pushes run a clean Java build with all tests for each distinct commit tip being pushed. Newly added Java sources and tests are included automatically. Hooks check isolated snapshots without changing your files or staging area.
 
-Hook activation is local to each clone. GitHub Actions also runs the Java checks after pushing. When another application or language is added, extend `scripts/run-git-checks.sh` and CI with its checks.
+The Python module requires uv for the hooks. Commits check Python lint and formatting; pushes also run its tests. Hook activation is local to each clone. GitHub Actions checks both services and builds their distributions.
 
 Run the hook regression tests with `python3 -m unittest discover -s tests -v`. They use temporary repositories to cover partial staging, check failures, whitespace, multiple pushed refs, and deletions.
 
@@ -97,10 +109,15 @@ fine-core/
 ├── Readme.md
 ├── docs/
 │   └── idea.md
-└── fincore-java-server/
-    ├── pom.xml
-    ├── mvnw
-    └── src/
+├── fincore-java-server/
+│   ├── pom.xml
+│   ├── mvnw
+│   └── src/
+└── finecore-ai-server/
+    ├── pyproject.toml
+    ├── uv.lock
+    ├── src/finecore_ai_server/
+    └── tests/
 ```
 
 ## Modeling principles

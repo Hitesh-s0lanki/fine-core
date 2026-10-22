@@ -81,6 +81,53 @@ class GitHooksTest(unittest.TestCase):
         self.assertNotEqual(self.hook("pre-commit").returncode, 0)
         self.assertFalse(self.log.exists())
 
+    def add_python_fixture(self):
+        module = self.repo / "finecore-ai-server"
+        module.mkdir()
+        (module / "pyproject.toml").write_text('[project]\nname = "fixture"\n')
+        source = module / "example.py"
+        source.write_text("GOOD\n")
+        bin_dir = self.repo / "mock-bin"
+        bin_dir.mkdir()
+        uv = bin_dir / "uv"
+        uv.write_text(
+            '#!/bin/sh\nset -eu\n'
+            'printf "uv %s\\n" "$*" >> "$FINCORE_HOOK_TEST_LOG"\n'
+            'cat example.py >> "$FINCORE_HOOK_TEST_LOG"\n'
+            '! grep -q BROKEN example.py\n'
+        )
+        uv.chmod(0o755)
+        self.env["PATH"] = str(bin_dir) + os.pathsep + self.env["PATH"]
+        self.git("add", "finecore-ai-server")
+        return source
+
+    def test_python_commit_checks_staged_snapshot(self):
+        source = self.add_python_fixture()
+        source.write_text("BROKEN unstaged\n")
+        result = self.hook("pre-commit")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = self.log.read_text()
+        self.assertIn("uv sync --locked", log)
+        self.assertIn("uv run --frozen ruff check .", log)
+        self.assertIn("uv run --frozen ruff format --check .", log)
+        self.assertNotIn("pytest", log)
+        self.assertNotIn("BROKEN", log)
+
+    def test_python_push_runs_tests_and_rejects_failure(self):
+        source = self.add_python_fixture()
+        good_commit = self.commit()
+        update = f"refs/heads/main {good_commit} refs/heads/main {'0' * 40}\n"
+        result = self.run_command("sh", ".githooks/pre-push", check=False, input=update)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("uv run --frozen pytest", self.log.read_text())
+        source.write_text("BROKEN\n")
+        self.git("add", "finecore-ai-server")
+        bad_commit = self.commit()
+        source.write_text("GOOD\n")
+        update = f"refs/heads/main {bad_commit} refs/heads/main {'0' * 40}\n"
+        result = self.run_command("sh", ".githooks/pre-push", check=False, input=update)
+        self.assertNotEqual(result.returncode, 0)
+
     def test_push_checks_each_distinct_tip_and_skips_deletions(self):
         first = self.git("rev-parse", "HEAD")
         self.source.write_text("SECOND\n")

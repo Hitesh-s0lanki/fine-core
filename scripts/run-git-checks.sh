@@ -33,11 +33,29 @@ check_java() (
   fi
 )
 
+check_python() (
+  cd "$check_dir/tree"
+  if [ ! -f finecore-ai-server/pyproject.toml ]; then
+    exit 0
+  fi
+
+  cd finecore-ai-server
+  printf 'Checking Python lint and formatting...\n'
+  uv sync --locked </dev/null
+  uv run --frozen ruff check . </dev/null
+  uv run --frozen ruff format --check . </dev/null
+  if [ "$mode" = pre-push ]; then
+    printf 'Running Python tests...\n'
+    uv run --frozen pytest </dev/null
+  fi
+)
+
 if [ "$mode" = pre-commit ]; then
   git diff --cached --check
   mkdir "$check_dir/tree"
   git checkout-index --all --prefix="$check_dir/tree/"
   check_java
+  check_python
 else
   # Git supplies one line per pushed ref. Deletions have an all-zero local OID.
   # Maven gets /dev/null above so it cannot consume the remaining ref lines.
@@ -57,6 +75,7 @@ else
     git archive --format=tar --output="$check_dir/snapshot.tar" "$commit_oid"
     tar -xf "$check_dir/snapshot.tar" -C "$check_dir/tree"
     check_java
+    check_python
     touch "$check_dir/checked-$commit_oid"
   done
 fi
