@@ -162,7 +162,9 @@ This is the original proposed service flow, not a finalized deployment topology.
 
 ## 9. Conceptual data model
 
-These entities describe domain needs rather than a finalized database schema.
+These entities summarize domain needs. The Java server implements company
+persistence, source evidence and immutable snapshots. Valuation and scenario
+contracts remain to be implemented.
 
 | Entity | Main information |
 | --- | --- |
