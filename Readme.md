@@ -4,7 +4,11 @@
 
 FinCore is a planned research, valuation, and deal analytics platform for learning investment banking through a practical software project. The aim is to turn public-company disclosures into traceable financial statements, reproducible valuation models, scenario comparisons, and exportable analyst reports.
 
-This repository contains project documentation, a Spring Boot API starter in `fincore-java-server`, and a Python/FastAPI service starter in `finecore-ai-server`. The financial workflows, integrations, calculations, and exports are not implemented yet.
+This repository contains project documentation, a Spring Boot company-data API
+in `fincore-java-server`, and a Python/FastAPI service in `finecore-ai-server`.
+The Java API provides JPA/PostgreSQL persistence, company search, sourced
+assertions and immutable snapshots. Automatic provider integration, valuation
+calculations and exports are not implemented yet.
 
 ## Project idea
 
@@ -52,7 +56,9 @@ The project serves two goals:
 | Development and delivery | Docker Compose, GitHub Actions; AWS as a potential deployment target |
 | Later additions | Redis/workers when needed; LangGraph and pgvector for filing research |
 
-The Java API starter uses Java 21, Maven, Spring Web, and Spring Boot Actuator. The Python starter uses Python 3.12, FastAPI, Pydantic Settings, and uv. The remaining tools are design proposals.
+The Java API uses Java 21, Maven, Spring Web, Spring Data JPA, PostgreSQL,
+Flyway and Actuator. The Python service uses Python 3.12, FastAPI, Pydantic
+Settings and uv. Other stack components remain design proposals.
 
 ## Run the Java server
 
@@ -60,6 +66,7 @@ Install JDK 21 and set `JAVA_HOME` to its installation directory, then run:
 
 ```sh
 cd fincore-java-server
+docker compose up -d postgres
 ./mvnw spring-boot:run
 ```
 
