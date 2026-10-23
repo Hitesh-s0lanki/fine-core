@@ -189,7 +189,7 @@ public final class Resources {
               MarketMetricObservationRequest.class),
           new Resource("corporate-actions", CorporateAction.class, CorporateActionRequest.class),
           new Resource("fx-observations", FxObservation.class, FxObservationRequest.class),
-          new Resource("macro-seriess", MacroSeries.class, MacroSeriesRequest.class),
+          new Resource("macro-series", MacroSeries.class, MacroSeriesRequest.class),
           new Resource("macro-observations", MacroObservation.class, MacroObservationRequest.class),
           new Resource("coverage-items", CoverageItem.class, CoverageItemRequest.class),
           new Resource("quality-issues", DataQualityIssue.class, DataQualityIssueRequest.class),

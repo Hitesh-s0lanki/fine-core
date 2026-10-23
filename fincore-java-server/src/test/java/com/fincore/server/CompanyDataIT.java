@@ -26,6 +26,76 @@ class CompanyDataIT extends CompanyApiTestSupport {
   }
 
   @Test
+  void macroSeriesUsesCanonicalRoute() throws Exception {
+    assertThat(request("GET", "/api/v1/company-data/macro-series", null).statusCode())
+        .isEqualTo(200);
+    assertThat(request("GET", "/api/v1/company-data/macro-seriess", null).statusCode())
+        .isEqualTo(404);
+  }
+
+  @Test
+  void snapshotCannotIncludeAnotherCompanysRelationship() throws Exception {
+    UUID other =
+        UUID.fromString(
+            json(request(
+                    "POST",
+                    "/api/v1/companies",
+                    body(
+                        "company",
+                        body(
+                            "evidenceIds",
+                            List.of(evidence),
+                            "slug",
+                            "other-" + UUID.randomUUID(),
+                            "displayName",
+                            "Other",
+                            "entityKind",
+                            "issuer"),
+                        "identifiers",
+                        List.of(
+                            body(
+                                "evidenceIds",
+                                List.of(evidence),
+                                "scheme",
+                                "provider_company_id",
+                                "authority",
+                                "fixture",
+                                "value",
+                                UUID.randomUUID().toString())))))
+                .get("id")
+                .asText());
+    UUID relationship =
+        create(
+            "company-relationships",
+            body(
+                "evidenceIds",
+                List.of(evidence),
+                "subjectCompanyId",
+                other,
+                "objectCompanyId",
+                company,
+                "relationshipType",
+                "subsidiary"));
+    var selected = List.of(member(company, "identity"), member(relationship, "relationship"));
+    assertThat(
+            request(
+                    "POST",
+                    "/api/v1/companies/" + company + "/snapshots",
+                    snapshotFixture(selected, List.of()))
+                .statusCode())
+        .isEqualTo(400);
+    assertThat(
+            request(
+                    "POST",
+                    "/api/v1/companies/" + other + "/snapshots",
+                    snapshotFixture(
+                        List.of(member(other, "identity"), member(relationship, "relationship")),
+                        List.of()))
+                .statusCode())
+        .isEqualTo(201);
+  }
+
+  @Test
   void onboardingSearchesIdentifiersPreservingLeadingZeros() throws Exception {
     String cik =
         "0"
@@ -296,13 +366,25 @@ class CompanyDataIT extends CompanyApiTestSupport {
     assertThatThrownBy(
             () -> jdbc.update("update company set display_name='changed' where id=?", company))
         .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+    UUID laterEvidence =
+        create(
+            "source-references",
+            body(
+                "evidenceIds",
+                List.of(),
+                "extractionMethod",
+                "configured",
+                "observedAt",
+                "2026-10-23T12:00:00Z"));
     assertThatThrownBy(
             () ->
                 jdbc.update(
                     "insert into record_evidence(record_id,evidence_id) values (?,?)",
                     company,
-                    evidence))
-        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
+                    laterEvidence))
+        .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class)
+        .hasMessageContaining("Record evidence is frozen");
+    assertThat(json(request("GET", url, null))).isEqualTo(before);
   }
 
   @Test

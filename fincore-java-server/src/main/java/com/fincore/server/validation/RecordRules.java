@@ -143,16 +143,23 @@ public class RecordRules {
     return record;
   }
 
-  /** Resolves issuer ownership through security, listing or registration parents. */
+  /** Resolves the subject issuer, including relationship and receipt-security parents. */
   public UUID companyOf(DomainRecord record) {
     if (record instanceof Company company) {
       return company.getId();
     }
     BeanWrapper bean = PropertyAccessorFactory.forBeanPropertyAccess(record);
     if (bean.isReadableProperty("companyId")) {
-      return (UUID) bean.getPropertyValue("companyId");
+      UUID companyId = (UUID) bean.getPropertyValue("companyId");
+      if (companyId != null) {
+        return companyId;
+      }
     }
-    for (String property : List.of("securityId", "listingId", "registrationId", "filingId")) {
+    if (record instanceof CompanyRelationship relationship) {
+      return relationship.getSubjectCompanyId();
+    }
+    for (String property :
+        List.of("securityId", "receiptSecurityId", "listingId", "registrationId", "filingId")) {
       if (bean.isReadableProperty(property)) {
         UUID id = (UUID) bean.getPropertyValue(property);
         if (id != null) {

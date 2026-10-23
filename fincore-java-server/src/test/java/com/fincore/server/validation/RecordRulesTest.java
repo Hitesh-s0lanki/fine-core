@@ -1,6 +1,7 @@
 package com.fincore.server.validation;
 
 import static com.fincore.server.support.TestRecords.identified;
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.verifyNoInteractions;
@@ -9,9 +10,13 @@ import static org.mockito.Mockito.when;
 import com.fincore.server.models.common.DomainRecord;
 import com.fincore.server.models.company.Company;
 import com.fincore.server.models.company.CompanyProfileObservation;
+import com.fincore.server.models.company.CompanyRelationship;
 import com.fincore.server.models.disclosure.Filing;
 import com.fincore.server.models.financial.FinancialConcept;
 import com.fincore.server.models.financial.FinancialObservation;
+import com.fincore.server.models.security.DepositaryReceiptRatio;
+import com.fincore.server.models.security.Security;
+import com.fincore.server.models.source.ProviderEntityBinding;
 import com.fincore.server.models.source.RawArtifact;
 import com.fincore.server.models.source.SourceReference;
 import com.fincore.server.repository.common.DomainRecordRepository;
@@ -195,6 +200,39 @@ class RecordRulesTest {
     assertThatThrownBy(() -> rules.require(id, DomainRecord.class))
         .isInstanceOf(IllegalArgumentException.class);
     verifyNoInteractions(entityManager);
+  }
+
+  @Test
+  void relationshipOwnershipUsesTheSubjectCompany() {
+    var relationship = new CompanyRelationship();
+    relationship.setSubjectCompanyId(companyId);
+    relationship.setObjectCompanyId(UUID.randomUUID());
+    assertThat(rules.companyOf(relationship)).isEqualTo(companyId);
+  }
+
+  @Test
+  void receiptRatioOwnershipFollowsTheReceiptSecurity() {
+    UUID securityId = UUID.randomUUID();
+    var ratio = new DepositaryReceiptRatio();
+    ratio.setReceiptSecurityId(securityId);
+    securityReference(securityId);
+    assertThat(rules.companyOf(ratio)).isEqualTo(companyId);
+  }
+
+  @Test
+  void securityBindingWithoutDirectCompanyStillHasAnIssuer() {
+    UUID securityId = UUID.randomUUID();
+    var binding = new ProviderEntityBinding();
+    binding.setSecurityId(securityId);
+    securityReference(securityId);
+    assertThat(rules.companyOf(binding)).isEqualTo(companyId);
+  }
+
+  private void securityReference(UUID id) {
+    when(records.findResourceById(id)).thenReturn(Optional.of("securities"));
+    var security = identified(new Security(), id);
+    security.setCompanyId(companyId);
+    when(entityManager.find(Security.class, id)).thenReturn(security);
   }
 
   private CompanyProfileObservation profile(String field, Object value) {

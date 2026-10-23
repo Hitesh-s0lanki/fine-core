@@ -19,7 +19,7 @@ import lombok.Setter;
 /** Persistent macro series assertion. */
 @Entity
 @Table(name = "macro_series")
-@DiscriminatorValue("macro-seriess")
+@DiscriminatorValue("macro-series")
 @Getter
 @Setter
 @NoArgsConstructor
