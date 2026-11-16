@@ -270,3 +270,58 @@ that exact ready job; omitting the parameter retains general queue claiming.
 See `finecore-ai-server/adapters/sec-submissions-profile/README.md` for the run
 sequence and the persisted ingestion report. These targets have no refresh
 interval and will not be periodically scheduled.
+
+## SEC company discovery and explicit import
+
+The frontend can search the official SEC ticker directory without first loading
+companies into PostgreSQL. Configure `SEC_USER_AGENT` with your application name
+and real contact email, then restart Java. Without it, discovery returns 503.
+`SEC_RAW_DIRECTORY` defaults to `./data/sec-directory`; persist this directory
+alongside the Java service. Raw source references use local file URIs on that
+host, so keep these files available for evidence review and backups.
+
+| Method and path | Behavior |
+| --- | --- |
+| `GET /api/v1/companies/discovery/sec?query=apple&page=0&size=25` | Search name, ticker substring, or exact CIK; no company writes. |
+| `POST /api/v1/companies/discovery/sec/import` | Explicitly import the selected `{"cik":"0000320193"}` identity. |
+
+Discovery returns `items` containing `cik`, `ticker`, `name`, and `companyId`
+(null until a matching CIK is stored), plus `page`, `size`, `totalElements`,
+`hasNext`, `sourceUrl`, and `retrievedAt`. Queries must contain 1–100 characters,
+page must be nonnegative, and size must be 1–100. Exact ticker matches rank first.
+An issuer may have multiple rows for different ticker associations. The directory
+covers the SEC's published ticker associations, not all historical EDGAR filers,
+and does not filter out financial-sector issuers.
+
+Import requires a nonzero ten-digit CIK present in that directory. It returns
+201 with a Location header for a new company or 200 when a company with that CIK
+already exists, with `{company, created, coverage: "identity_only"}`. `coverage`
+describes the scope of this operation; it does not assess any existing company's
+financial coverage. The retained directory bytes, SHA-256, source URL, retrieval
+time and extraction locator evidence the company and identifiers. Ticker aliases
+use identifier scheme `other` and authority `SEC ticker directory:<directory SHA-256>`, allowing the
+existing local company search to resolve newly imported tickers without creating
+unverified exchange listings. The version-specific authority scopes these aliases
+to the observed directory, permitting later ticker reassignment without treating
+the ticker as a permanent global issuer identifier. Existing companies are reused without rewriting
+their names or adding current ticker aliases. Ambiguous stored CIK ownership
+returns 409. Concurrent imports through this endpoint serialize by CIK and reuse
+one identity; unrelated manual onboarding remains subject to database constraints.
+
+The fixed upstream URL is `https://www.sec.gov/files/company_tickers.json`.
+Successful responses are cached in-process for 24 hours; `retrievedAt` is the
+actual retrieval time, not a publication timestamp. Expired data is not silently
+served when refresh fails. Refreshes coalesce within one Java process and failed
+attempts back off for 30 seconds. HTTP redirects are rejected, connect/request
+and overall wait timeouts are bounded, and response bytes are capped at 10 MiB.
+A failed upstream request/invalid payload/retention error returns 502; retry during
+the cooldown returns 503. Multiple Java instances and the separate Python worker
+still require shared provider-wide throttling when deployed together.
+
+Import does not fetch financials, filings, snapshots, sector or market prices.
+SEC directory identity and ticker associations do not establish valuation readiness.
+The routes follow the current trusted-local API model; deployment access control
+and browser CORS/proxy configuration remain separate delivery tasks.
+
+Official references: [SEC ticker mapping and developer FAQ](https://www.sec.gov/about/webmaster-frequently-asked-questions)
+and [SEC access and identifying User-Agent guidance](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
