@@ -1,0 +1,29 @@
+{
+  "source_id": "sec_submissions_profile",
+  "schema_version": 1,
+  "records_path": [],
+  "identity_path": [
+    "cik"
+  ],
+  "semantic_notes": [
+    "cik is the ten-digit SEC filer identifier, not a domestic incorporation number. The legacy normalized registration_number field carries this provider identifier only.",
+    "name is the current filer name from SEC submissions metadata.",
+    "This mapping extracts identity only. It makes no claim about incorporation jurisdiction, legal status, full filing-history coverage or financial coverage.",
+    "For the current Java bridge use registry SEC EDGAR filer directory, registryJurisdiction US, registrationKind unknown. Do not label these records domestic incorporation registrations."
+  ],
+  "fields": {
+    "record_type": {
+      "constant": "company_profile"
+    },
+    "registration_number": {
+      "path": [
+        "cik"
+      ]
+    },
+    "name": {
+      "path": [
+        "name"
+      ]
+    }
+  }
+}

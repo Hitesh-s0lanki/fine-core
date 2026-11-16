@@ -7,8 +7,9 @@ FinCore is a planned research, valuation, and deal analytics platform for learni
 This repository contains project documentation, a Spring Boot company-data API
 in `fincore-java-server`, and a Python/FastAPI service in `finecore-ai-server`.
 The Java API provides JPA/PostgreSQL persistence, company search, sourced
-assertions and immutable snapshots. Automatic provider integration, valuation
-calculations and exports are not implemented yet.
+assertions and immutable snapshots. A durable ingestion queue, optional Java
+scheduler and separate Python worker now support unpaged JSON company profiles.
+Financial-provider ingestion, valuation calculations and exports remain planned.
 
 ## Project idea
 
@@ -81,10 +82,25 @@ Install Python 3.12 and uv, then run:
 ```sh
 cd finecore-ai-server
 uv sync --frozen
-uv run uvicorn finecore_ai_server.main:app --reload --port 8000
+uv run uvicorn app.main:app --reload --port 8000
 ```
 
 Health is available at `http://localhost:8000/health` and API documentation at `http://localhost:8000/docs`. See the [Python service README](finecore-ai-server/README.md) for configuration and development checks.
+
+## Run the ingestion walkthrough
+
+With the Java API running against a dedicated development database, run:
+
+```sh
+cd finecore-ai-server
+uv run python -m services.ingestion_demo
+```
+
+This exercises a synthetic JSON provider through adapter certification, durable
+job claiming, raw-byte retention, Java persistence and frozen snapshot replay.
+See the server READMEs for the continuous worker, source allowlist and optional
+scheduler configuration. Financial records require a richer ingestion contract
+and are explicitly rejected by this first profile bridge.
 
 ## Local Git checks
 
@@ -123,7 +139,11 @@ fine-core/
 └── finecore-ai-server/
     ├── pyproject.toml
     ├── uv.lock
-    ├── src/finecore_ai_server/
+    ├── src/
+    │   ├── app/
+    │   ├── controllers/
+    │   ├── services/
+    │   └── schemas/
     └── tests/
 ```
 

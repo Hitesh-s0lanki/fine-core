@@ -4,8 +4,8 @@ from importlib.metadata import version
 
 from fastapi import FastAPI
 
-from finecore_ai_server.api.health import router as health_router
-from finecore_ai_server.config import Settings
+from app.config import Settings
+from app.router import router
 
 
 def create_app(settings: Settings | None = None) -> FastAPI:
@@ -13,10 +13,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     application = FastAPI(
         title=settings.app_name,
         version=version("finecore-ai-server"),
-        description="FinCore financial analytics and filing research service starter.",
+        description="FinCore financial analytics and declarative adapter onboarding.",
     )
     application.state.settings = settings
-    application.include_router(health_router)
+    application.include_router(router)
     return application
 
 
