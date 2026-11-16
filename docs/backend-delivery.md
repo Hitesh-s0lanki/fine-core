@@ -10,6 +10,9 @@ storage models do not imply that ingestion or frontend workflows are complete.
 Work proceeds one task at a time. Each task must have a documented API contract,
 appropriate validation and tests, and a review before the next task starts.
 
+Task branches start from the latest `dev`. Task pull requests target and merge
+into `dev` for now. Promoting `dev` into `main` requires an explicit user request.
+
 ## Existing foundation
 
 - Company onboarding, local company search and company detail APIs.
