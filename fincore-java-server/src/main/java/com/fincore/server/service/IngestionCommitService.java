@@ -52,6 +52,9 @@ public class IngestionCommitService {
       return job;
     }
     Target target = jobs.target((UUID) job.get("targetId"));
+    if (!"company_profile".equals(target.operation())) {
+      throw new IllegalArgumentException("Use the financial completion endpoint for this target");
+    }
     ProviderEntityBinding binding = jobs.binding(target);
     if (!target.adapterId().equals(input.adapterId())
         || !target.sourceId().equals(input.sourceId())
@@ -186,7 +189,7 @@ public class IngestionCommitService {
               target.adapterId(),
               target.adapterId(),
               1,
-              "profile-v1",
+              "sec_company_facts".equals(target.operation()) ? "sec-companyfacts-v1" : "profile-v1",
               input.retrievedAt(),
               Instant.now(),
               "failed",

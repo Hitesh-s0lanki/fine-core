@@ -1,0 +1,37 @@
+{
+  "version": "sec-companyfacts-v1",
+  "operation": "sec_company_facts",
+  "source_id": "sec_company_facts",
+  "source_url_template": "https://data.sec.gov/api/xbrl/companyfacts/CIK{ten_digit_cik}.json",
+  "taxonomies": [
+    "us-gaap",
+    "ifrs-full",
+    "dei",
+    "srt"
+  ],
+  "selection": "1-20 explicit concepts; every unit and period for each selected concept; reject absent/empty selected concepts",
+  "max_facts": 5000,
+  "value": "original JSON number token plus exact fixed-point decimal; 42 integer digits and 18 fractional digits; no rounding",
+  "identity": "payload CIK must equal verified binding CIK",
+  "period_type": "duration when start exists; otherwise instant; canonical concept period type remains unknown",
+  "metadata": [
+    "unit",
+    "start",
+    "end",
+    "fy",
+    "fp",
+    "frame",
+    "accn",
+    "form",
+    "filed"
+  ],
+  "unknown": [
+    "original XBRL context ID",
+    "original XBRL decimals",
+    "consolidation scope",
+    "taxonomy version",
+    "acceptance timestamp"
+  ],
+  "output": "sourced raw financial observations; no canonical metrics, restatement precedence, annual selection or snapshot",
+  "digest_scope": "this extraction contract descriptor, not executable parser code"
+}

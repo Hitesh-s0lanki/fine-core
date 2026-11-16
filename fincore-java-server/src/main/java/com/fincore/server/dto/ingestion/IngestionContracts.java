@@ -11,7 +11,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
-/** Contracts for the first single-response JSON company-profile ingestion workflow. */
+/** Contracts for single-response profile and explicitly selected raw SEC fact ingestion. */
 public final class IngestionContracts {
   private IngestionContracts() {}
 
@@ -25,7 +25,16 @@ public final class IngestionContracts {
       @NotBlank @Size(max = 200) String registry,
       @NotBlank @Size(max = 200) String registryJurisdiction,
       @NotNull @Pattern(regexp = "domestic|overseas|branch|unknown") String registrationKind,
-      @Min(60) Integer refreshSeconds) {}
+      @Min(60) Integer refreshSeconds,
+      @Pattern(regexp = "company_profile|sec_company_facts") String operation,
+      @Valid SecFinancialContracts.Selection selection) {
+    /** Existing profile targets retain their original operation when the field is absent. */
+    public Target {
+      if (operation == null) {
+        operation = "company_profile";
+      }
+    }
+  }
 
   /** Original HTTP response metadata; the worker retains the bytes separately. */
   public record Artifact(

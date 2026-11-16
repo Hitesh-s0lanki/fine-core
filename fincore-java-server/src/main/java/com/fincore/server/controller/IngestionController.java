@@ -3,8 +3,11 @@ package com.fincore.server.controller;
 import com.fincore.server.dto.ingestion.IngestionContracts.Completion;
 import com.fincore.server.dto.ingestion.IngestionContracts.Failure;
 import com.fincore.server.dto.ingestion.IngestionContracts.Target;
+import com.fincore.server.dto.ingestion.SecFinancialContracts;
 import com.fincore.server.service.IngestionCommitService;
 import com.fincore.server.service.IngestionJobService;
+import com.fincore.server.service.SecFinancialCommitService;
+import com.fincore.server.service.SecFinancialIngestionService;
 import jakarta.validation.Valid;
 import java.util.Map;
 import java.util.UUID;
@@ -23,17 +26,39 @@ import org.springframework.web.bind.annotation.RestController;
 public class IngestionController {
   private final IngestionJobService jobs;
   private final IngestionCommitService commits;
+  private final SecFinancialIngestionService financials;
+  private final SecFinancialCommitService financialCommits;
 
   /** Coordinates durable jobs and atomic domain commits. */
-  public IngestionController(IngestionJobService jobs, IngestionCommitService commits) {
+  public IngestionController(
+      IngestionJobService jobs,
+      IngestionCommitService commits,
+      SecFinancialIngestionService financials,
+      SecFinancialCommitService financialCommits) {
     this.jobs = jobs;
     this.commits = commits;
+    this.financials = financials;
+    this.financialCommits = financialCommits;
   }
 
   /** Creates an operator-configured target. */
   @PostMapping("/targets")
   public Map<String, Object> target(@Valid @RequestBody Target target) {
     return jobs.createTarget(target);
+  }
+
+  /** Queues explicitly selected raw Company Facts for an already onboarded CIK company. */
+  @PostMapping("/sec-company-facts/refresh")
+  public Map<String, Object> financialRefresh(
+      @Valid @RequestBody SecFinancialContracts.Refresh input) {
+    return financials.refresh(input);
+  }
+
+  /** Commits raw selected observations and their result metadata, without a financial snapshot. */
+  @PostMapping("/jobs/{id}/complete-financials")
+  public Map<String, Object> financialComplete(
+      @PathVariable UUID id, @Valid @RequestBody SecFinancialContracts.Completion input) {
+    return financialCommits.complete(id, input);
   }
 
   /** Requests a refresh, or returns the existing unfinished job. */
