@@ -117,9 +117,9 @@ cells may only be inserted in the snapshot's creation transaction. Invalid input
 returns `400`, missing resources `404`, and conflicting identities/constraints
 `409`, without exposing SQL or database details.
 
-This implements persistence and APIs, not automatic collection from providers,
-Python adapter integration, financial calculations or a complete source-precedence
-engine. Snapshot completeness means the submitted manifest has no missing cells
+The ingestion API now coordinates durable jobs and accepts normalized company
+profiles from a separate Python worker. Financial ingestion, financial calculations
+and a complete source-precedence engine remain unimplemented. Snapshot completeness means the submitted manifest has no missing cells
 or incomplete coverage members; it does not establish real-world completeness.
 The explicit selection policy must be recorded by the caller. Application
 authentication remains outside this module's current implementation.
@@ -191,3 +191,82 @@ TEST_DATABASE_USERNAME=fincore TEST_DATABASE_PASSWORD=fincore ./mvnw clean verif
 Tests cover atomic onboarding, source evidence, exact decimal values, temporal
 identifier uniqueness, foreign reference types, JSON contracts, financial cell
 selection and immutable snapshot replay. Testcontainers also runs in CI.
+
+## Durable ingestion and scheduling
+
+The first vertical workflow supports one unpaged JSON company profile per response.
+Operational `ingestion_target` and `ingestion_job` tables are mutable; source
+evidence, observations and snapshots remain append-only. Flyway V4 adds these
+operational tables without changing existing assertions.
+
+All routes below are relative to `/api/v1/ingestion`:
+
+| Method and path | Behavior |
+| --- | --- |
+| `POST /targets` | Configure a verified binding, source endpoint and pinned adapter. |
+| `POST /targets/{id}/refresh` | Enqueue work or return the existing unfinished job. |
+| `GET /jobs/{id}` | Read status, attempt count, error code and resulting snapshot ID. |
+| `POST /jobs/claim` | Claim one job; returns 204 if no work is ready. |
+| `POST /jobs/{id}/complete` | Commit evidence, profile observations, snapshot and success atomically. |
+| `POST /jobs/{id}/fail` | Append failed-attempt evidence and apply bounded retry policy. |
+
+Example target request (replace IDs and the adapter digest with registered values):
+
+```json
+{
+  "bindingId": "11111111-1111-1111-1111-111111111111",
+  "endpointId": "22222222-2222-2222-2222-222222222222",
+  "fetchUrl": "https://example-provider.test/company/FC001",
+  "sourceId": "example_profile",
+  "adapterId": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "registry": "Example Registry",
+  "registryJurisdiction": "GB",
+  "registrationKind": "overseas",
+  "refreshSeconds": 3600
+}
+```
+
+The binding must be verified and directly reference the company. The endpoint must
+belong to the binding's provider and declare `paginationKind: none`. Registry and
+registration kind are explicit configuration; they are not inferred from field
+names or company domicile. The normalized `jurisdiction` is stored as the
+registration's home jurisdiction, so certify that meaning during adapter review.
+Only `statusRaw` is stored; no normalized legal status is guessed.
+
+Set `INGESTION_SCHEDULING_ENABLED=true` to enable a scan every
+`INGESTION_SCHEDULING_SCAN_MS` (default 30000 milliseconds). Each due target uses
+its own `refreshSeconds` (minimum 60). Omit `refreshSeconds` for manual-only work.
+The first scheduled check is immediately due. Scheduler ticks only enqueue work;
+start the Python worker separately. Export these variables as with other Spring
+configuration; Java does not automatically load `.env`.
+
+PostgreSQL row locks and a partial unique index prevent duplicate unfinished jobs
+for one target. Workers claim with `SKIP LOCKED`, a fresh token and a five-minute
+lease. Expired leases can be reclaimed; old tokens cannot commit. There are at
+most three claims per job. Transient failures back off for 30 then 60 seconds.
+Semantic/configuration failures stop immediately. Completion acknowledgement is
+idempotent. A crash cannot leave a partially committed snapshot. Raw files may
+remain orphaned if a worker crashes before committing metadata; retention and
+cleanup are not yet implemented.
+
+The snapshot selection policy is explicitly `profile-only-v1`, with no financial
+cells. A complete profile manifest does not imply financial coverage or valuation
+readiness. New refreshes append new records and snapshots. Older snapshots keep
+their original selected records.
+
+This is a trusted local API, matching the existing module's lack of authentication.
+Keep worker/control routes on a private local interface. Production access control,
+source credentials, target editing/pause controls, distributed object storage,
+heartbeat extension and financial ingestion are follow-up work. Local `file:` raw
+URIs refer to the Python worker host; Java stores metadata and does not read files.
+
+For a complete runnable synthetic demonstration, see the Python README's
+`python -m services.ingestion_demo` instructions. No external provider is required.
+
+For the five SEC URLs, the Python `services.sec_live_ingest` command registers the
+mapping through FastAPI and provisions real Java company/binding/target records
+before ingesting. `POST /api/v1/ingestion/jobs/claim?jobId={id}` limits a claim to
+that exact ready job; omitting the parameter retains general queue claiming.
+See `finecore-ai-server/adapters/sec-submissions-profile/README.md` for the run
+sequence and the persisted ingestion report. These targets have no refresh
+interval and will not be periodically scheduled.

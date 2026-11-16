@@ -4,8 +4,8 @@ import pytest
 from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
-from finecore_ai_server.config import Settings
-from finecore_ai_server.main import create_app
+from app.config import Settings
+from app.main import create_app
 
 
 def test_health_and_openapi():

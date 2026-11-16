@@ -22,7 +22,7 @@ requires = ["hatchling>=1.26,<2.0"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/finecore_ai_server"]
+packages = ["src/app", "src/controllers", "src/services", "src/schemas"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

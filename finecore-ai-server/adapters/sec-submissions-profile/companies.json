@@ -1,0 +1,32 @@
+[
+  {
+    "ticker": "AAPL",
+    "expectedName": "Apple Inc.",
+    "expectedSourceIdentifier": "0000320193",
+    "fetchUrl": "https://data.sec.gov/submissions/CIK0000320193.json"
+  },
+  {
+    "ticker": "MSFT",
+    "expectedName": "MICROSOFT CORP",
+    "expectedSourceIdentifier": "0000789019",
+    "fetchUrl": "https://data.sec.gov/submissions/CIK0000789019.json"
+  },
+  {
+    "ticker": "AMZN",
+    "expectedName": "AMAZON COM INC",
+    "expectedSourceIdentifier": "0001018724",
+    "fetchUrl": "https://data.sec.gov/submissions/CIK0001018724.json"
+  },
+  {
+    "ticker": "GOOGL",
+    "expectedName": "Alphabet Inc.",
+    "expectedSourceIdentifier": "0001652044",
+    "fetchUrl": "https://data.sec.gov/submissions/CIK0001652044.json"
+  },
+  {
+    "ticker": "NVDA",
+    "expectedName": "NVIDIA CORP",
+    "expectedSourceIdentifier": "0001045810",
+    "fetchUrl": "https://data.sec.gov/submissions/CIK0001045810.json"
+  }
+]
