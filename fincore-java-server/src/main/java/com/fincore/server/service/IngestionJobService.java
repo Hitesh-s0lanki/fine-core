@@ -1,9 +1,11 @@
 package com.fincore.server.service;
 
 import com.fincore.server.dto.ingestion.IngestionContracts.Target;
+import com.fincore.server.dto.ingestion.SecFinancialContracts;
 import com.fincore.server.interfaces.CompanyDataServiceInter;
 import com.fincore.server.models.source.ProviderEntityBinding;
 import com.fincore.server.models.source.SourceEndpoint;
+import com.fincore.server.models.source.SourceProvider;
 import java.net.URI;
 import java.util.List;
 import java.util.Map;
@@ -46,6 +48,34 @@ public class IngestionJobService {
         || !"none".equals(endpoint.getPaginationKind())) {
       throw new IllegalArgumentException(
           "Expected a credential-free URL and unpaged provider endpoint");
+    }
+    if ("sec_company_facts".equals(target.operation())) {
+      SecFinancialIngestionService.validateSelection(target.selection());
+      SourceProvider provider = (SourceProvider) data.load("providers", binding.getProviderId());
+      if (!"sec".equals(provider.getCode())
+          || !"regulator".equals(provider.getKind())
+          || !"cik".equals(binding.getIdentifierKind())
+          || !binding.getSourceIdentifier().matches("(?!0000000000)[0-9]{10}")
+          || !target
+              .fetchUrl()
+              .equals(SecFinancialIngestionService.fetchUrl(binding.getSourceIdentifier()))
+          || !SecFinancialContracts.PARSER_ID.equals(target.adapterId())
+          || !SecFinancialContracts.SOURCE.equals(target.sourceId())
+          || !"company-facts-selected".equals(endpoint.getCode())
+          || !"1".equals(endpoint.getContractVersion())) {
+        throw new IllegalArgumentException(
+            "Expected pinned SEC Company Facts source configuration");
+      }
+      List<UUID> owners =
+          jdbc.queryForList(
+              "SELECT DISTINCT company_id FROM company_identifier WHERE scheme='cik' AND value=?",
+              UUID.class,
+              binding.getSourceIdentifier());
+      if (owners.size() != 1 || !owners.getFirst().equals(binding.getCompanyId())) {
+        throw new IllegalArgumentException("SEC binding must resolve one evidenced CIK company");
+      }
+    } else if (!"company_profile".equals(target.operation()) || target.selection() != null) {
+      throw new IllegalArgumentException("Unsupported operation or selection");
     }
     UUID id = UUID.randomUUID();
     jdbc.update(
@@ -184,6 +214,8 @@ public class IngestionJobService {
               result.put("leaseToken", rs.getObject("lease_token", UUID.class));
               result.put("snapshotId", rs.getObject("snapshot_id", UUID.class));
               result.put("errorCode", rs.getString("error_code"));
+              String value = rs.getString("result");
+              result.put("result", value == null ? null : mapper.readValue(value, Map.class));
               return result;
             },
             id);
@@ -224,6 +256,24 @@ public class IngestionJobService {
         lease_until = NULL, finished_at = now() WHERE id = ?
         """,
         snapshot,
+        id);
+  }
+
+  /** Records raw-fact completion without implying a selected financial snapshot. */
+  public void succeedFinancial(UUID id, UUID run, int recordCount) {
+    jdbc.update(
+        "UPDATE ingestion_job SET status='succeeded', lease_until=NULL, finished_at=now(),"
+            + " result=?::jsonb WHERE id=?",
+        mapper.writeValueAsString(
+            Map.of(
+                "normalizationRunId",
+                run,
+                "recordCount",
+                recordCount,
+                "coverage",
+                "selected_raw_facts",
+                "parserVersion",
+                SecFinancialContracts.VERSION)),
         id);
   }
 

@@ -9,7 +9,8 @@ in `fincore-java-server`, and a Python/FastAPI service in `finecore-ai-server`.
 The Java API provides JPA/PostgreSQL persistence, company search, sourced
 assertions and immutable snapshots. A durable ingestion queue, optional Java
 scheduler and separate Python worker now support unpaged JSON company profiles.
-Financial-provider ingestion, valuation calculations and exports remain planned.
+The worker also ingests explicitly selected raw SEC Company Facts. Financial
+normalization, valuation calculations and exports remain planned.
 
 ## Project idea
 
@@ -99,8 +100,10 @@ uv run python -m services.ingestion_demo
 This exercises a synthetic JSON provider through adapter certification, durable
 job claiming, raw-byte retention, Java persistence and frozen snapshot replay.
 See the server READMEs for the continuous worker, source allowlist and optional
-scheduler configuration. Financial records require a richer ingestion contract
-and are explicitly rejected by this first profile bridge.
+scheduler configuration. The profile bridge rejects financial records; the
+separate SEC Company Facts operation supports selected raw observations. See
+the [Java API documentation](fincore-java-server/README.md#selected-raw-sec-company-facts-ingestion-task-2)
+for enqueueing a financial refresh, polling its job and reading sourced facts.
 
 ## Local Git checks
 

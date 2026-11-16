@@ -118,8 +118,9 @@ returns `400`, missing resources `404`, and conflicting identities/constraints
 `409`, without exposing SQL or database details.
 
 The ingestion API now coordinates durable jobs and accepts normalized company
-profiles from a separate Python worker. Financial ingestion, financial calculations
-and a complete source-precedence engine remain unimplemented. Snapshot completeness means the submitted manifest has no missing cells
+profiles and explicitly selected SEC Company Facts from a separate Python worker.
+Canonical financial normalization, calculations and complete source precedence remain
+unimplemented. Snapshot completeness means the submitted manifest has no missing cells
 or incomplete coverage members; it does not establish real-world completeness.
 The explicit selection policy must be recorded by the caller. Application
 authentication remains outside this module's current implementation.
@@ -257,7 +258,7 @@ their original selected records.
 This is a trusted local API, matching the existing module's lack of authentication.
 Keep worker/control routes on a private local interface. Production access control,
 source credentials, target editing/pause controls, distributed object storage,
-heartbeat extension and financial ingestion are follow-up work. Local `file:` raw
+heartbeat extension and other financial-provider ingestion are follow-up work. Local `file:` raw
 URIs refer to the Python worker host; Java stores metadata and does not read files.
 
 For a complete runnable synthetic demonstration, see the Python README's
@@ -325,3 +326,100 @@ and browser CORS/proxy configuration remain separate delivery tasks.
 
 Official references: [SEC ticker mapping and developer FAQ](https://www.sec.gov/about/webmaster-frequently-asked-questions)
 and [SEC access and identifying User-Agent guidance](https://www.sec.gov/search-filings/edgar-search-assistance/accessing-edgar-data).
+
+## Selected raw SEC Company Facts ingestion (Task 2)
+
+Request a manual-only refresh for an already onboarded company with one evidenced
+current ten-digit CIK:
+
+```http
+POST /api/v1/ingestion/sec-company-facts/refresh
+Content-Type: application/json
+
+{
+  "companyId": "<existing company UUID>",
+  "selection": {"taxonomy": "us-gaap", "concepts": ["Assets", "NetIncomeLoss"]}
+}
+```
+
+The response is `{targetId, selection, job}`. The API provisions/reuses SEC source
+configuration from existing CIK evidence, reuses a target for the same sorted
+selection, and reuses its unfinished job for repeated/concurrent requests. Missing
+or ambiguous current CIKs return 409. Ambiguous cross-company CIK ownership is
+rejected. It does not fetch remotely; the separate Python worker performs the fetch.
+
+Configure the Python worker with a real identifying `FINECORE_INGESTION_USER_AGENT`,
+`FINECORE_INGESTION_ALLOWED_ORIGINS=["https://data.sec.gov"]`, the core API URL and
+persistent raw storage. Run `uv run python -m services.ingestion_worker --once`
+from the Python module, or run continuously. The fixed source is
+`https://data.sec.gov/api/xbrl/companyfacts/CIK<ten-digit CIK>.json`. Unexpected URLs,
+redirects and mismatched payload CIKs are rejected. Entire responses are retained
+before parsing. Large issuers may exceed the default 5 MB response cap; set
+`FINECORE_INGESTION_MAX_BYTES` explicitly, up to 50,000,000 bytes.
+
+Select one standard taxonomy (`us-gaap`, `ifrs-full`, `dei`, `srt`) and 1–20 distinct
+raw concept names. Every returned unit, period and accession for those concepts
+is included, including overlapping and amended observations. Missing/empty selected
+concepts, malformed selected facts, unsupported decimal precision or more than
+5,000 selected observations fail the whole job without truncating. Narrowing the
+selection limits persisted records, but the API still downloads full Company Facts.
+
+Poll `GET /api/v1/ingestion/jobs/{job.id}`. Success has `snapshotId: null` and:
+
+```json
+{
+  "result": {
+    "normalizationRunId": "<run UUID>",
+    "recordCount": 123,
+    "coverage": "selected_raw_facts",
+    "parserVersion": "sec-companyfacts-v1"
+  }
+}
+```
+
+Read the run's `outputRecordIds` at
+`GET /api/v1/company-data/normalization-runs/{normalizationRunId}`, then read those
+`financial-observations` IDs. Company-wide pagination is also available:
+`GET /api/v1/company-data/financial-observations?companyId=<UUID>&page=0&size=100`.
+Follow each observation's `conceptId`, `filingId` and `evidenceIds` through the
+generic resource read routes. Evidence retains the exact source JSON pointer,
+fetch attempt, source URL and original-byte artifact/hash.
+
+Trusted workers submit lease token, fetch times, artifact, pinned adapter/source IDs,
+CIK and selected records to `POST /api/v1/ingestion/jobs/{id}/complete-financials`.
+Java checks selection, unique source locators, exact numeric/token equality, issuer
+and filing metadata. Artifact, attempt, evidence, concepts, minimal accession filing
+records, observations, normalization run and job success commit atomically. A late
+failure rolls all writes back. Completion acknowledgement is idempotent; the existing
+bounded transient retry/lease recovery policy applies. Profile jobs retain their
+original completion endpoint and profile-only snapshots.
+
+Native units and exact numeric values are preserved without floating-point coercion.
+`reportedValueRaw` retains the original JSON numeric token, including exponent or
+negative-zero spelling. Scale is 0 (native-unit value); original XBRL decimals,
+context IDs and acceptance timestamps stay unknown. Scope is `unspecified`,
+dimensions are `not_reported`, and concept period metadata is `unknown`; observation
+dates determine instant/duration type. Filing date gives date-precision availability,
+not an acceptance timestamp. Filing stubs retain accession/form/date and point to
+the actual Company Facts source; full history, original filing document URLs,
+report dates and amendment linkage remain Task 3. Existing concepts/filings are
+reused; contradictory accession metadata fails rather than rewriting assertions.
+
+Refreshes append evidence-scoped observations and preserve prior facts. Assertion
+keys include job and source locator, providing replay idempotency rather than
+cross-refresh deduplication. Canonical metrics, restatement precedence, annual/five-year
+selection, statement APIs, financial snapshots and valuation readiness remain later tasks.
+
+The operation pins the SHA-256 of the packaged extraction descriptor at
+`finecore-ai-server/src/services/sec_company_facts_contract.json`. The digest is
+stored in `adapterId` and `normalization-runs.adapterContentHash`; it attests the
+contract's bytes, not executable parser code. Semantic parser/descriptor changes
+require a new version/digest and matching Java pin. This specialized SEC operation
+does not use the generic declarative adapter registry.
+
+The trusted-local access model still applies. Provisioning is serialized within
+this API; unrelated manual provisioning relies on database constraints. Multiple
+workers/services require shared provider-wide SEC rate coordination before deployment.
+Tests use controlled responses and isolated PostgreSQL; no live SEC request is required.
+
+Official source: [SEC Company Facts API and XBRL scope](https://www.sec.gov/search-filings/edgar-application-programming-interfaces).

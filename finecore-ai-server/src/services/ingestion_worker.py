@@ -1,4 +1,4 @@
-"""Durable Java-coordinated worker for unpaged JSON company profiles.
+"""Durable Java-coordinated worker for unpaged profiles and selected SEC Company Facts.
 
 Run separately from FastAPI: uv run python -m services.ingestion_worker [--once].
 Only source origins explicitly allowed by the operator may be fetched. Adapters
@@ -20,6 +20,7 @@ from urllib.request import HTTPRedirectHandler, Request, build_opener
 from app.config import Settings
 from schemas.adapters import Sample
 from services.adapter_service import normalize
+from services.sec_company_facts import PARSER_ID, SOURCE_ID, parse_company_facts, selection
 
 LOG = logging.getLogger(__name__)
 
@@ -150,6 +151,23 @@ class Worker:
             allowed = {origin(url) for url in self.settings.ingestion_allowed_origins}
             if origin(target["fetchUrl"]) not in allowed:
                 raise ValueError("Source origin is not allowed")
+            operation = target.get("operation", "company_profile")
+            if operation == "sec_company_facts":
+                selection(target.get("selection"))
+                expected_url = (
+                    "https://data.sec.gov/api/xbrl/companyfacts/CIK"
+                    + job["sourceIdentifier"]
+                    + ".json"
+                )
+                if (
+                    target["fetchUrl"] != expected_url
+                    or target["adapterId"] != PARSER_ID
+                    or target["sourceId"] != SOURCE_ID
+                    or "@" not in self.settings.ingestion_user_agent
+                ):
+                    raise ValueError("Invalid SEC source configuration or contact")
+            elif operation != "company_profile":
+                raise ValueError("Unsupported ingestion operation")
             code = "network"
             status, content_type, raw = self.transport.request(target["fetchUrl"], source=True)
             retrieved = now()
@@ -164,29 +182,53 @@ class Worker:
                 )
                 raise ValueError("Source request failed")
             code = "invalid_payload"
-            payload = json.loads(
-                raw, object_pairs_hook=unique_object, parse_constant=reject_constant
-            )
-            code = "normalization"
-            result = normalize(
-                target["adapterId"],
-                Sample(
-                    company_id=job["companyId"],
-                    expected_source_identifier=job["sourceIdentifier"],
-                    raw_reference=artifact["storageUri"],
-                    payload=payload,
-                ),
-                self.settings.adapter_registry_dir,
-            )
-            if result["source_id"] != target["sourceId"]:
-                raise ValueError("Adapter source mismatch")
-            code = "unsupported_record"
-            records = result["records"]
-            if len(records) != 1 or records[0]["record_type"] != "company_profile":
-                raise ValueError("The first bridge accepts exactly one company profile")
-            profile = records[0]
-            if profile["registration_number"] != job["sourceIdentifier"]:
-                raise ValueError("Registration and verified binding differ")
+            completion_path = "complete"
+            if operation == "sec_company_facts":
+                records = parse_company_facts(raw, job["sourceIdentifier"], target["selection"])
+                completion_path = "complete-financials"
+                normalized = {
+                    "adapterId": PARSER_ID,
+                    "sourceId": SOURCE_ID,
+                    "cik": job["sourceIdentifier"],
+                    "records": records,
+                }
+            else:
+                payload = json.loads(
+                    raw, object_pairs_hook=unique_object, parse_constant=reject_constant
+                )
+                code = "normalization"
+                result = normalize(
+                    target["adapterId"],
+                    Sample(
+                        company_id=job["companyId"],
+                        expected_source_identifier=job["sourceIdentifier"],
+                        raw_reference=artifact["storageUri"],
+                        payload=payload,
+                    ),
+                    self.settings.adapter_registry_dir,
+                )
+                if result["source_id"] != target["sourceId"]:
+                    raise ValueError("Adapter source mismatch")
+                code = "unsupported_record"
+                records = result["records"]
+                if len(records) != 1 or records[0]["record_type"] != "company_profile":
+                    raise ValueError("The first bridge accepts exactly one company profile")
+                profile = records[0]
+                if profile["registration_number"] != job["sourceIdentifier"]:
+                    raise ValueError("Registration and verified binding differ")
+                normalized = {
+                    "adapterId": result["adapter_id"],
+                    "sourceId": result["source_id"],
+                    "records": [
+                        {
+                            "recordType": profile["record_type"],
+                            "name": profile["name"],
+                            "registrationNumber": profile["registration_number"],
+                            "status": profile["status"],
+                            "jurisdiction": profile["jurisdiction"],
+                        }
+                    ],
+                }
         except Exception as exc:
             # Do not put provider bodies, URLs or exception messages in logs or the job record.
             if isinstance(exc, OSError) and not isinstance(exc, (TimeoutError, URLError)):
@@ -213,23 +255,13 @@ class Worker:
         # report it as failed work: the completion endpoint is idempotent and a
         # crashed/unacknowledged job is recovered through its fenced lease.
         self.core.post(
-            f"/jobs/{job['id']}/complete",
+            f"/jobs/{job['id']}/{completion_path}",
             {
                 "leaseToken": job["leaseToken"],
                 "requestedAt": requested,
                 "retrievedAt": retrieved,
                 "artifact": artifact,
-                "adapterId": result["adapter_id"],
-                "sourceId": result["source_id"],
-                "records": [
-                    {
-                        "recordType": profile["record_type"],
-                        "name": profile["name"],
-                        "registrationNumber": profile["registration_number"],
-                        "status": profile["status"],
-                        "jurisdiction": profile["jurisdiction"],
-                    }
-                ],
+                **normalized,
             },
         )
         LOG.info("Ingestion job %s completed", job["id"])

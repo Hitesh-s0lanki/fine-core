@@ -4,7 +4,7 @@ Python 3.12 and FastAPI starter for FinCore's financial analytics and future
 filing research service. This currently provides application configuration,
 process health, generated API documentation, and declarative adapter onboarding.
 A separate ingestion worker fetches explicitly configured unpaged JSON profile
-sources and commits evidenced profiles and snapshots through the Java API.
+sources and selected raw SEC Company Facts, committing sourced records through the Java API.
 Valuation calculations and model-provider integrations are not implemented yet.
 
 ## Run
@@ -180,10 +180,11 @@ parsing. Oversized or interrupted responses cannot be retained as complete
 artifacts. Authentication, pagination, HTML extraction, PDFs and SEC concept-tree
 normalization are outside this worker's first source contract.
 
-Only one `company_profile` record per response is currently bridged. Its
+The generic adapter bridge accepts only one `company_profile` record per response. Its
 registration number must match the verified provider binding. Financial facts and
 announcements are explicitly rejected by this bridge until their richer Java
-contracts are implemented. Normalization errors stop the job for review; transient
+contracts are implemented. Selected SEC facts use the dedicated operation below.
+Normalization errors stop the job for review; transient
 network errors, HTTP 429 and HTTP 5xx use Java's bounded retry policy. Unexpected
 storage/core communication errors leave the lease for recovery.
 
@@ -202,3 +203,62 @@ worker and reads the resulting frozen overview. It prints job and snapshot IDs
 and an overview URL. Each invocation creates new demo records and retains raw
 bytes. The local provider stops when the demo exits. No external source or LLM
 is used. Keep other workers stopped while running this isolated demonstration.
+
+## Selected raw SEC Company Facts
+
+The same durable worker now handles `operation: "sec_company_facts"` alongside
+profile jobs. It fetches and retains full Company Facts bytes, extracts selected
+raw concepts with a deterministic versioned parser, and submits an atomic financial
+completion to Java. It needs neither the FastAPI process nor adapter registration.
+It does not calculate canonical metrics, choose annual results or resolve restatements.
+
+For an existing evidenced CIK company in Java, enqueue:
+
+```sh
+curl -X POST http://127.0.0.1:8080/api/v1/ingestion/sec-company-facts/refresh \
+  -H 'Content-Type: application/json' \
+  -d '{"companyId":"<company UUID>","selection":{"taxonomy":"us-gaap","concepts":["Assets","NetIncomeLoss"]}}'
+```
+
+Then configure the worker and run it separately:
+
+```sh
+export FINECORE_INGESTION_ALLOWED_ORIGINS='["https://data.sec.gov"]'
+export FINECORE_INGESTION_USER_AGENT='FinCore Your Name your-real-contact@your-organization.tld'
+uv run python -m services.ingestion_worker --once
+```
+
+Use `FINECORE_CORE_API_URL` for another Java address and persist
+`FINECORE_INGESTION_RAW_DIR`. Poll `GET /api/v1/ingestion/jobs/{job.id}` on Java.
+Success returns a `result` with `recordCount`, `normalizationRunId`,
+`coverage: "selected_raw_facts"`, and `snapshotId: null`. Read that run's output
+observation IDs through the Java company-data API. Original profile ingestion remains compatible.
+
+Select one standard taxonomy (`us-gaap`, `ifrs-full`, `dei`, `srt`) and 1–20
+distinct raw concept names. Every returned unit/period/accession for those names
+is retained. Missing/empty selected concepts, malformed selected data, CIK mismatch
+or more than 5,000 selected observations stop the entire job without truncating.
+Selecting fewer concepts limits records, but still downloads full Company Facts.
+Large issuers may exceed the default 5 MB HTTP cap: configure
+`FINECORE_INGESTION_MAX_BYTES` explicitly, up to 50,000,000 bytes.
+
+JSON number tokens are converted to exact fixed-point strings without a floating-point
+intermediate or rounding. The schema supports 42 integer digits and 18 fractional
+digits; unsupported precision fails. Native unit strings, original numeric spelling,
+fiscal metadata, accession, form and filing dates remain attached. Original XBRL
+contexts/decimals, acceptance timestamps and consolidation scope are not inferred.
+
+The packaged `services/sec_company_facts_contract.json` descriptor defines extraction
+semantics. Its SHA-256 pins targets and normalization runs; this is a contract digest,
+not executable-code attestation. Semantic changes require a new descriptor/version
+and matching Java pin. Tests verify descriptor packaging/pinning, exact decimals,
+selection limits, raw retention and worker failure behavior; Java tests cover atomic
+completion, provenance, concurrent refresh, append behavior and lease/retry fencing.
+
+SEC calls require a real identifying contact and approved origin. Transient failures
+use Java's existing bounded retry policy. Multiple workers/services need shared SEC
+rate coordination before deployment. No live SEC fetch is needed for tests.
+
+See the Java README's selected raw Company Facts section for complete API contracts
+and persistence limitations. Official source:
+[SEC EDGAR Company Facts API](https://www.sec.gov/search-filings/edgar-application-programming-interfaces).

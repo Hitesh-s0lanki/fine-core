@@ -28,7 +28,7 @@ into `dev` for now. Promoting `dev` into `main` requires an explicit user reques
 | ID | Task | Status | Completion criteria |
 | --- | --- | --- | --- |
 | B01 | SEC company discovery and onboarding | Complete | Search SEC identities beyond locally stored companies; explicitly import a verified identity without duplicates; retain source evidence; document frontend contracts and upstream failures. |
-| B02 | SEC financial ingestion | Pending | Fetch and retain Company Facts; persist sourced financial observations through a richer ingestion contract; verify atomic completion and retry behavior. |
+| B02 | SEC financial ingestion | Complete | Fetch and retain Company Facts; persist sourced financial observations through a richer ingestion contract; verify atomic completion and retry behavior. |
 | B03 | SEC filing history | Pending | Persist sourced recent and historical filings with accession, form, filing date and links; represent incomplete history explicitly. |
 | B04 | Financial normalization | Pending | Map canonical metrics; select annual periods; handle issuer-specific tags, restatements, units and source precedence; expose five years where available and explicit gaps. |
 | B05 | Financial statement APIs | Pending | Return period-organized income statement, balance sheet and cash flow responses with exact values, units, currency, source references and missing-value explanations. |
@@ -72,4 +72,20 @@ and Indian-market expansion remain outside the initial valuation MVP.
 - Tests cover input validation, caching, retained bytes, upstream failures/backoff, response limits/timeouts, exact CIK reuse, concurrent imports, share-class tickers, ambiguous identity, source links and shared artifacts.
 - A live SEC fetch was not run for this task because Java's identifying contact configuration was not supplied. Network behavior was checked using controlled test responses.
 - This delivers identity discovery/import only. It does not generate financial observations, filings or snapshots, and does not establish valuation readiness. Existing companies are reused without updating their names/ticker aliases.
-- Next task: B02, SEC financial ingestion. It has not started.
+- Next task: B02, SEC financial ingestion.
+
+### B02 — SEC financial ingestion
+
+- Implemented by the `sec_financial_ingestion` sub-agent on `feat/task-2-sec-financial-ingestion`, based on `dev`, and reviewed by the parent agent.
+- `POST /api/v1/ingestion/sec-company-facts/refresh` accepts an existing company ID and `{taxonomy, concepts}` selection, provisions/reuses a fixed SEC source and returns `{targetId, selection, job}`.
+- Select one supported taxonomy and 1–20 raw concepts. The worker retains the complete response and all units/periods/accessions for those concepts; missing/empty concepts, malformed selected data or more than 5,000 observations fail the whole job without truncation.
+- `POST /api/v1/ingestion/jobs/{id}/complete-financials` atomically commits evidence, minimal filing references, selected raw observations, normalization run and job success. Existing profile ingestion remains compatible.
+- Poll the existing job endpoint for `result.normalizationRunId`, `recordCount`, `coverage: selected_raw_facts` and `parserVersion`; successful financial ingestion has no snapshot ID. Read exact output IDs through the normalization run or paginate company financial observations.
+- Native units, source numeric tokens, exact decimal values, periods and filing metadata are preserved. Context IDs, original XBRL precision and other unavailable metadata remain unknown. Extraction pins a packaged contract-descriptor digest; this is not executable-code attestation.
+- Scope excludes canonical metric selection, financial statement APIs, full filing history and automatic financial snapshots; those remain separate backlog tasks.
+- Independent acceptance passed using the actual Java HTTP API and Python worker against an isolated PostgreSQL database, replaying retained real SEC responses without external requests: 111 Infosys and 176 Wipro observations across six IFRS concepts each.
+- All 287 observations were checked against their source values, original number tokens, native units, periods, fiscal metadata, accession/form/filing dates and exact retained-response hashes. Each issuer referenced eight accession filing stubs; jobs reported selected raw facts and no financial snapshot.
+- Additional acceptance passed for order-independent duplicate refresh requests, preservation of 111 earlier assertions after a changed response, and missing-concept failure without new financial observations.
+- Verification: Maven `verify` passed with 74 unit tests and 51 PostgreSQL integration tests, zero failures/errors/skips. All 64 Python tests, Ruff checks, formatting and Python distribution builds passed. The wheel includes the extraction descriptor. Whitespace checks passed.
+- All source-request acceptance used controlled replay or synthetic fixtures; no new live SEC fetch was performed. Configure an identifying worker contact, approved SEC origin and persistent raw storage for live ingestion. Full responses can exceed the default 5 MB cap; the documented setting permits up to 50 MB.
+- Next task: B03, SEC filing history. It has not started.
