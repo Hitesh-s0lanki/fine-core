@@ -34,3 +34,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Retained raw SEC company directory responses.
+/data/sec-directory/
